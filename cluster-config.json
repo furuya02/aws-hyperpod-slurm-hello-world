@@ -1,0 +1,19 @@
+{
+  "_comment": "HyperPod クラスタ最小構成(1 InstanceGroup / 1 Node / ml.g5.2xlarge)。<...> プレースホルダは scripts/create.sh が sed で実値に置換する。 LifeCycleConfig.SourceS3Uri に置いたファイル一式が各ノードにダウンロードされ、OnCreate に指定したスクリプトが実行される(awsome-distributed-training 標準)。",
+  "InstanceGroups": [
+    {
+      "InstanceGroupName": "worker",
+      "InstanceType": "ml.g5.2xlarge",
+      "InstanceCount": 1,
+      "LifeCycleConfig": {
+        "SourceS3Uri": "s3://<LIFECYCLE_BUCKET>/lifecycle/",
+        "OnCreate": "on_create.sh"
+      },
+      "ExecutionRole": "<EXECUTION_ROLE_ARN>"
+    }
+  ],
+  "VpcConfig": {
+    "SecurityGroupIds": ["<DEFAULT_SECURITY_GROUP_ID>"],
+    "Subnets": ["<PRIVATE_SUBNET_ID>"]
+  }
+}

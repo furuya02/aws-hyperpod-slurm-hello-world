@@ -1,0 +1,27 @@
+# Node / CDK
+node_modules/
+cdk.out/
+.cdk.staging/
+*.js
+!jest.config.js
+*.d.ts
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+
+# Environment
+.env
+.env.local
+
+# OS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+
+# Slurm job logs (動作確認時のローカルコピーを除外)
+hello.*.out

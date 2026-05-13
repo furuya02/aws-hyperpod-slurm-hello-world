@@ -1,0 +1,7 @@
+# AWS Samples からの取り込みファイルは git 管理外
+# (scripts/sync-lifecycle.sh で取得)
+*
+!.gitignore
+!README.md
+!provisioning_parameters.json
+!config.py.override

@@ -1,0 +1,36 @@
+# 本記事用の最小化 config.py(scripts/sync-lifecycle.sh で AWS Samples の config.py を上書きする)
+# AWS Samples のオリジナル: https://github.com/aws-samples/awsome-distributed-training/blob/main/1.architectures/5.sagemaker-hyperpod/LifecycleScripts/base-config/config.py
+#
+# 本記事のスコープ: Slurm hello world + nvidia-smi のみ。コンテナ機能や Observability は不要なため、全機能を OFF にして Slurm のセットアップだけ走らせる。
+
+class Config:
+    # Docker / Enroot / Pyxis: 不要(コンテナワークロードなし)
+    enable_docker_enroot_pyxis = False
+    # Observability(Prometheus / OpenTelemetry): 不要
+    enable_observability = False
+    # PAM Slurm Adopt: 不要
+    enable_pam_slurm_adopt = False
+    # SSSD / LDAP 連携: 不要
+    enable_sssd = False
+    # mountpoint-for-s3: 不要
+    enable_mount_s3 = False
+    # FSx OpenZFS: 不要(共有ストレージなし、1 ノード兼用構成)
+    enable_fsx_openzfs = False
+    # Slurm ログローテーション: 短時間検証のため不要
+    enable_slurm_log_rotation = False
+    # mountpoint-for-s3 用のバケット名(enable_mount_s3=False なので未使用)
+    s3_bucket = ""
+
+
+# AWS Samples のオリジナル `config.py` には ObservabilityConfig / SssdConfig クラスも定義されているが、
+# 本記事では機能を全部 OFF にしているため import されない。一応空クラスとして定義しておく。
+class ObservabilityConfig:
+    prometheus_remote_write_url = ""
+    advanced_metrics = False
+    nccl_metrics_enabled = False
+    nccl_metrics_dump_interval_seconds = 30
+    nccl_profiler_plugin_path = ""
+
+
+class SssdConfig:
+    pass
