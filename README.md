@@ -1,6 +1,6 @@
 # aws-hyperpod-slurm-hello-world
 
-A minimal example for spinning up an Amazon SageMaker HyperPod cluster (1 node) and running Slurm hello world plus a GPU recognition test.
+A minimal example for spinning up an Amazon SageMaker HyperPod cluster (2 nodes: controller + worker) and running Slurm hello world plus a GPU recognition test.
 
 ## Cost warning (READ FIRST)
 
@@ -8,9 +8,9 @@ HyperPod **bills you for the entire time the cluster is running** (unlike Traini
 
 | Item | Value |
 |:--|:--|
-| Instance | `ml.g5.2xlarge` × 1 node (A10G 24GB) |
+| Instances | controller `ml.c5.xlarge` × 1 + worker `ml.g5.2xlarge` × 1 (A10G 24GB) |
 | Pricing | On-Demand |
-| 24 h idle cost | **~$53/day (~JPY 8,000/day)** |
+| 24 h idle cost | **~$59/day (~JPY 8,800/day)** (worker ~$53 + controller ~$6) |
 | Recommended | create -> verify quickly -> run `scripts/teardown.sh` |
 
 **Always run `scripts/teardown.sh` once you are done.**
@@ -22,7 +22,7 @@ HyperPod **bills you for the entire time the cluster is running** (unlike Traini
 | VPC | `aws-hyperpod-slurm-hello-world-vpc` (1 private subnet + 1 NAT Gateway) |
 | IAM Role | `aws-hyperpod-slurm-hello-world-execution-role` |
 | S3 Bucket | `aws-hyperpod-slurm-hello-world-<account-id>-lifecycle` |
-| HyperPod cluster | `aws-hyperpod-slurm-hello-world` (1 InstanceGroup / 1 node / `ml.g5.2xlarge`) |
+| HyperPod cluster | `aws-hyperpod-slurm-hello-world` (2 InstanceGroups: controller `ml.c5.xlarge` × 1 / worker `ml.g5.2xlarge` × 1) |
 
 ## Layout
 
@@ -49,7 +49,7 @@ HyperPod **bills you for the entire time the cluster is running** (unlike Traini
 
 ## Prerequisites
 
-- AWS account with quota `ml.g5.2xlarge for cluster usage` >= 1 in `ap-northeast-1`
+- AWS account with HyperPod cluster quotas in `ap-northeast-1`: `ml.g5.2xlarge for cluster usage` >= 1 (worker) and `ml.c5.xlarge for cluster usage` >= 1 (controller)
 - Local tools: `aws` CLI, `pnpm`, Node.js 20+, `git`, `jq`, Python 3, Session Manager plugin
 - AWS credentials configured
 
@@ -75,7 +75,7 @@ pnpm cdk deploy
 # Override the bucket suffix if you prefer:
 # pnpm cdk deploy -c bucket_suffix=20260514
 
-# 6. Create the cluster (ml.g5.2xlarge billing starts here)
+# 6. Create the cluster (HyperPod 2-node billing starts here: ~$59/day total)
 cd ..
 ./scripts/create.sh
 ```
@@ -83,10 +83,10 @@ cd ..
 ## Verify
 
 ```bash
-# Connect via SSM Session Manager
+# Connect via SSM Session Manager (connects to the controller node)
 ./scripts/connect.sh
 
-# On the node:
+# On the controller node (srun dispatches to the worker):
 sinfo
 srun -N1 hostname
 srun -N1 nvidia-smi
@@ -110,7 +110,7 @@ cat hello.*.out
 
 - Error handling is intentionally minimal; this is a learning sample, not production code
 - Files brought in by `scripts/sync-lifecycle.sh` under `lifecycle/` are git-ignored
-- The cluster runs Slurm controller + worker on the same node by aligning `provisioning_parameters.json#controller_group` with the InstanceGroup name `worker`
+- The cluster splits Slurm roles across two nodes: controller on `ml.c5.xlarge`, compute (worker) on `ml.g5.2xlarge`. `lifecycle_script.py` decides a node's role by matching its InstanceGroup name against `provisioning_parameters.json#controller_group` (exclusive: match -> controller, otherwise -> compute), so both roles cannot live in one InstanceGroup.
 
 ## License
 
