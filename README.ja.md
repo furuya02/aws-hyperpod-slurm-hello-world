@@ -1,6 +1,6 @@
 # aws-hyperpod-slurm-hello-world
 
-Amazon SageMaker HyperPod の最小構成（1 ノード）で Slurm hello world と GPU 認識テストを実施するためのサンプル一式です。
+Amazon SageMaker HyperPod の最小構成（2 ノード: controller + worker）で Slurm hello world と GPU 認識テストを実施するためのサンプル一式です。
 
 ## コスト警告（最重要）
 
@@ -8,9 +8,9 @@ HyperPod は **クラスタ起動中ずっと課金** されます（Training Jo
 
 | 項目 | 値 |
 |:--|:--|
-| インスタンス | `ml.g5.2xlarge` × 1 ノード（A10G 24GB） |
+| インスタンス | controller `ml.c5.xlarge` × 1 + worker `ml.g5.2xlarge` × 1（A10G 24GB） |
 | 課金モード | On-Demand |
-| 1 日放置のコスト | 約 **$53/日 ≒ 約 8,000 円/日** |
+| 1 日放置のコスト | 約 **$59/日 ≒ 約 8,800 円/日**（worker 約 $53 + controller 約 $6） |
 | 推奨運用 | 作成 → 即動作確認 → 即 `scripts/teardown.sh` |
 
 **動作確認後は必ず `scripts/teardown.sh` を実行してください。**
@@ -22,7 +22,7 @@ HyperPod は **クラスタ起動中ずっと課金** されます（Training Jo
 | VPC | `aws-hyperpod-slurm-hello-world-vpc`（プライベートサブネット 1 + NAT Gateway 1） |
 | IAM Role | `aws-hyperpod-slurm-hello-world-execution-role` |
 | S3 Bucket | `aws-hyperpod-slurm-hello-world-<account-id>-lifecycle` |
-| HyperPod クラスタ | `aws-hyperpod-slurm-hello-world`（1 InstanceGroup / 1 ノード / `ml.g5.2xlarge`） |
+| HyperPod クラスタ | `aws-hyperpod-slurm-hello-world`（2 InstanceGroups: controller `ml.c5.xlarge` × 1 / worker `ml.g5.2xlarge` × 1） |
 
 ## ディレクトリ構成
 
@@ -49,7 +49,7 @@ HyperPod は **クラスタ起動中ずっと課金** されます（Training Jo
 
 ## 前提
 
-- AWS アカウントに `ml.g5.2xlarge for cluster usage` のクォータが 1 以上ある（リージョン `ap-northeast-1`）
+- AWS アカウントに HyperPod クラスタ用クォータが両方 1 以上ある（リージョン `ap-northeast-1`）: `ml.g5.2xlarge for cluster usage`（worker）と `ml.c5.xlarge for cluster usage`（controller）
 - ローカルに `aws` CLI / `pnpm` / Node.js 20+ / `git` / `jq` / Python 3 / Session Manager プラグインがインストール済み
 - AWS 認証情報設定済み（`aws configure` または環境変数）
 
@@ -75,7 +75,7 @@ pnpm cdk deploy
 # アカウント ID 部分を任意の suffix に置換する場合:
 # pnpm cdk deploy -c bucket_suffix=20260514
 
-# 6. クラスタ作成(ここから ml.g5.2xlarge の課金開始)
+# 6. クラスタ作成(ここから HyperPod 2 ノードの課金開始: 合計 約 $59/日)
 cd ..
 ./scripts/create.sh
 ```
@@ -83,13 +83,13 @@ cd ..
 ## 動作確認
 
 ```bash
-# SSM Session Manager でノードに接続
+# SSM Session Manager で controller ノードに接続
 ./scripts/connect.sh
 
-# (以降はノード内)
+# (以降は controller ノード内。srun は worker へジョブを投げる)
 sinfo                  # Slurm クラスタ状態
 srun -N1 hostname      # シンプル実行
-srun -N1 nvidia-smi    # GPU 認識確認
+srun -N1 nvidia-smi    # GPU 認識確認(worker の A10G が見える)
 
 # ダミー Python ジョブ
 sbatch /path/to/hello.sh
@@ -110,7 +110,7 @@ cat hello.*.out
 
 - 本サンプルはエラーハンドリングを最小化しています。本番利用は想定していません
 - `lifecycle/` 配下に `scripts/sync-lifecycle.sh` で取り込んだファイルは git 管理外（`.gitignore`）です
-- 1 ノードで Slurm controller + worker を兼用する設計です（`provisioning_parameters.json` の `controller_group` をインスタンスグループ名 `worker` と一致させています）
+- Slurm の役割を 2 ノードに分離する設計です（controller: `ml.c5.xlarge` / compute: `ml.g5.2xlarge`）。`lifecycle_script.py` は自ノードのインスタンスグループ名を `provisioning_parameters.json` の `controller_group` と照合し、一致すれば controller、それ以外は compute と判定する排他ロジックのため、両者を 1 つのインスタンスグループに同居させることはできません
 
 ## ライセンス
 

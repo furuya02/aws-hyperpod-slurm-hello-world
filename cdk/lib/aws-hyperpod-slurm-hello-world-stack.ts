@@ -32,17 +32,82 @@ export class AwsHyperpodSlurmHelloWorldStack extends cdk.Stack {
       autoDeleteObjects: true,
     });
 
-    // IAM Role: HyperPod 実行ロール
+    // IAM Role: HyperPod 実行ロール(sample-physical-ai-scaffolding-kit の ExecutionRole 準拠)
     //   - 信頼関係: sagemaker.amazonaws.com
-    //   - 権限: SSM Managed Instance Core + S3 R/W(lifecycle bucket)
+    //   - マネージドポリシー: AmazonSageMakerClusterInstanceRolePolicy
+    //     (CloudWatch Logs / メトリクス / SSM messages / S3(sagemaker-*) を含む。
+    //      SSM 接続は本ポリシーの ssmmessages:* で足りるため AmazonSSMManagedInstanceCore は不要)
+    //   - インラインポリシー: ENI/VPC 操作・クラスタ管理 API・ECR(kit と同一)
+    //   - lifecycle バケットへの R/W は grantReadWrite で付与(kit と同じやり方)
     const executionRole: iam.Role = new iam.Role(this, "ExecutionRole", {
       roleName: `${PROJECT_NAME}-execution-role`,
       assumedBy: new iam.ServicePrincipal("sagemaker.amazonaws.com"),
       managedPolicies: [
-        iam.ManagedPolicy.fromAwsManagedPolicyName("AmazonSSMManagedInstanceCore"),
+        iam.ManagedPolicy.fromAwsManagedPolicyName("AmazonSageMakerClusterInstanceRolePolicy"),
       ],
     });
     lifecycleBucket.grantReadWrite(executionRole);
+
+    // AllowInterface: HyperPod が VPC 内に ENI を作成し、サブネット等を検証するための EC2 権限
+    //   (これが無いと create-cluster が "Unable to retrieve subnets" で失敗する)
+    executionRole.addToPolicy(
+      new iam.PolicyStatement({
+        actions: [
+          "ec2:DescribeNetworkInterfaces",
+          "ec2:DescribeVpcs",
+          "ec2:DescribeDhcpOptions",
+          "ec2:DescribeSubnets",
+          "ec2:DescribeSecurityGroups",
+          "ec2:CreateNetworkInterface",
+          "ec2:CreateNetworkInterfacePermission",
+          "ec2:CreateTags",
+          "ec2:DetachNetworkInterface",
+          "ec2:DeleteNetworkInterface",
+          "ec2:DeleteNetworkInterfacePermission",
+        ],
+        resources: ["*"],
+      }),
+    );
+
+    // AllowClusterUpdate: ノード上の lifecycle スクリプト等がクラスタ情報を参照するための権限
+    executionRole.addToPolicy(
+      new iam.PolicyStatement({
+        actions: [
+          "sagemaker:DeleteCluster",
+          "sagemaker:DescribeCluster",
+          "sagemaker:DescribeClusterNode",
+          "sagemaker:ListClusterNodes",
+          "sagemaker:UpdateCluster",
+          "sagemaker:UpdateClusterSoftware",
+          "sagemaker:BatchDeleteClusterNodes",
+          "sagemaker:ListClusters",
+          "cloudformation:DescribeStacks",
+        ],
+        resources: ["*"],
+      }),
+    );
+
+    // AllowEcrRepositoryPolicy: kit 準拠(本記事は Docker 無効のため実質未使用だが kit に合わせて付与)
+    executionRole.addToPolicy(
+      new iam.PolicyStatement({
+        actions: [
+          "ecr:CreateRepository",
+          "ecr:BatchCheckLayerAvailability",
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:GetRepositoryPolicy",
+          "ecr:DescribeRepositories",
+          "ecr:ListImages",
+          "ecr:DescribeImages",
+          "ecr:BatchGetImage",
+          "ecr:InitiateLayerUpload",
+          "ecr:UploadLayerPart",
+          "ecr:CompleteLayerUpload",
+          "ecr:PutImage",
+          "ecr:GetAuthorizationToken",
+        ],
+        resources: ["*"],
+      }),
+    );
 
     // Outputs: scripts/create.sh が CFn Outputs から取り出して cluster-config.json に流し込む
     new cdk.CfnOutput(this, "VpcId", { value: vpc.vpcId });

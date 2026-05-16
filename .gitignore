@@ -6,6 +6,9 @@ cdk.out/
 !jest.config.js
 *.d.ts
 
+# CDK context cache (アカウント ID をキーに含むため公開リポジトリから除外)
+cdk/cdk.context.json
+
 # Python
 __pycache__/
 *.pyc

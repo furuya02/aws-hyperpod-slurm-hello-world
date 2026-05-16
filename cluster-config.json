@@ -1,6 +1,16 @@
 {
-  "_comment": "HyperPod クラスタ最小構成(1 InstanceGroup / 1 Node / ml.g5.2xlarge)。<...> プレースホルダは scripts/create.sh が sed で実値に置換する。 LifeCycleConfig.SourceS3Uri に置いたファイル一式が各ノードにダウンロードされ、OnCreate に指定したスクリプトが実行される(awsome-distributed-training 標準)。",
+  "_comment": "HyperPod クラスタ構成(2 InstanceGroups)。controller=ml.c5.xlarge を Slurm ヘッドノード、worker=ml.g5.2xlarge を compute ノードにする。lifecycle_script.py は controller_group と一致するグループを HEAD_NODE、それ以外を COMPUTE_NODE と判定するため、両者は別グループに分ける。<...> プレースホルダは scripts/create.sh が sed で CFn Outputs の実値に毎回置換するので、このファイルを手で編集する必要はない。LifeCycleConfig.SourceS3Uri のファイル一式が各ノードにダウンロードされ、OnCreate に指定したスクリプトが実行される(awsome-distributed-training 標準)。",
   "InstanceGroups": [
+    {
+      "InstanceGroupName": "controller",
+      "InstanceType": "ml.c5.xlarge",
+      "InstanceCount": 1,
+      "LifeCycleConfig": {
+        "SourceS3Uri": "s3://<LIFECYCLE_BUCKET>/lifecycle/",
+        "OnCreate": "on_create.sh"
+      },
+      "ExecutionRole": "<EXECUTION_ROLE_ARN>"
+    },
     {
       "InstanceGroupName": "worker",
       "InstanceType": "ml.g5.2xlarge",

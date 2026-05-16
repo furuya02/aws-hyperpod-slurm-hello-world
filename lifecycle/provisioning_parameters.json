@@ -1,5 +1,5 @@
 {
-  "_comment": "HyperPod ノードの役割を決める設定。lifecycle_script.py が自ノードのインスタンスグループ名を見て、controller / login / compute のどれを担当するか判定する。本記事は 1 ノード兼用構成のため、controller_group とインスタンスグループ名(worker)を一致させる。",
+  "_comment": "HyperPod ノードの役割を決める設定。lifecycle_script.py は自ノードのインスタンスグループ名を見て、controller_group と一致すれば HEAD_NODE(Slurm controller)、一致しなければ COMPUTE_NODE と判定する(排他的)。そのため controller と worker は別インスタンスグループに分ける必要がある。",
   "workload_manager": "slurm",
-  "controller_group": "worker"
+  "controller_group": "controller"
 }
