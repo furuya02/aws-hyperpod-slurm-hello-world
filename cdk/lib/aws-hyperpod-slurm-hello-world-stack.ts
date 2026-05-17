@@ -25,12 +25,31 @@ export class AwsHyperpodSlurmHelloWorldStack extends cdk.Stack {
       natGateways: 1,
     });
 
-    // S3 Bucket: lifecycle スクリプト配置用(cdk destroy で確実に削除)
+    // S3 Bucket: lifecycle スクリプト配置用 + FSx DRA の S3 連携先(cdk destroy で確実に削除)
+    //   - lifecycle/ プレフィックス: HyperPod ノードへの sync 用(従来通り)
+    //   - jobs/      プレフィックス: FSx for Lustre の DRA で /fsx/jobs → s3://.../jobs/ に自動 export
     const lifecycleBucket: s3.Bucket = new s3.Bucket(this, "LifecycleBucket", {
       bucketName: `${PROJECT_NAME}-${bucketSuffix}-lifecycle`,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       autoDeleteObjects: true,
     });
+    // FSx サービスから本バケットへのアクセスを許可する Resource Policy
+    // (DRA(Data Repository Association)を作成すると FSx サービスが S3 オブジェクトを直接読み書きするため必要)
+    lifecycleBucket.addToResourcePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        principals: [new iam.ServicePrincipal("fsx.amazonaws.com")],
+        actions: [
+          "s3:AbortMultipartUpload",
+          "s3:DeleteObject",
+          "s3:Get*",
+          "s3:List*",
+          "s3:PutBucketNotification",
+          "s3:PutObject",
+        ],
+        resources: [lifecycleBucket.bucketArn, `${lifecycleBucket.bucketArn}/*`],
+      }),
+    );
 
     // IAM Role: HyperPod 実行ロール(sample-physical-ai-scaffolding-kit の ExecutionRole 準拠)
     //   - 信頼関係: sagemaker.amazonaws.com
@@ -109,7 +128,31 @@ export class AwsHyperpodSlurmHelloWorldStack extends cdk.Stack {
       }),
     );
 
-    // Outputs: scripts/create.sh が CFn Outputs から取り出して cluster-config.json に流し込む
+    // FSx for Lustre 用 SG (FSx 本体は scripts/create-fsx.sh で別建てに作成)
+    //   - FSx を CDK の外に出している理由:
+    //       「VPC+NAT (cdk deploy) → FSx (create-fsx.sh) → クラスタ (create.sh)」と
+    //       課金フェーズを 3 段で観察できるようにするため(教育的観点)
+    //   - SG だけは CDK で固定し、create-fsx.sh から参照する(SG は無料)
+    //   - Lustre プロトコル: ポート 988, 1021-1023
+    const fsxSg: ec2.SecurityGroup = new ec2.SecurityGroup(this, "FsxSg", {
+      vpc,
+      securityGroupName: `${PROJECT_NAME}-fsx-sg`,
+      description: "Security group for FSx for Lustre (Lustre protocol 988, 1021-1023)",
+      allowAllOutbound: true,
+    });
+    // HyperPod ノードは VPC default SG に所属するため、default SG からの ingress を許可
+    const defaultSg: ec2.ISecurityGroup = ec2.SecurityGroup.fromSecurityGroupId(
+      this,
+      "DefaultSgRef",
+      vpc.vpcDefaultSecurityGroup,
+    );
+    fsxSg.addIngressRule(defaultSg, ec2.Port.tcp(988), "Lustre from HyperPod nodes");
+    fsxSg.addIngressRule(defaultSg, ec2.Port.tcpRange(1021, 1023), "Lustre from HyperPod nodes");
+    // FSx 自己参照(OST 間通信)
+    fsxSg.addIngressRule(fsxSg, ec2.Port.tcp(988), "Lustre self");
+    fsxSg.addIngressRule(fsxSg, ec2.Port.tcpRange(1021, 1023), "Lustre self");
+
+    // Outputs: scripts/create.sh / create-fsx.sh が CFn Outputs から取り出して使う
     new cdk.CfnOutput(this, "VpcId", { value: vpc.vpcId });
     new cdk.CfnOutput(this, "PrivateSubnetIds", {
       value: vpc.privateSubnets.map((s: ec2.ISubnet) => s.subnetId).join(","),
@@ -117,5 +160,6 @@ export class AwsHyperpodSlurmHelloWorldStack extends cdk.Stack {
     new cdk.CfnOutput(this, "DefaultSecurityGroupId", { value: vpc.vpcDefaultSecurityGroup });
     new cdk.CfnOutput(this, "LifecycleBucketName", { value: lifecycleBucket.bucketName });
     new cdk.CfnOutput(this, "ExecutionRoleArn", { value: executionRole.roleArn });
+    new cdk.CfnOutput(this, "FsxSecurityGroupId", { value: fsxSg.securityGroupId });
   }
 }
